@@ -1,0 +1,1 @@
+issue-driven-branching: A GitHub Action that automatically generates a branch for each issue in a user-specified project board and column. This ensures each issue can be worked on independently, promoting clean and organized code development.
