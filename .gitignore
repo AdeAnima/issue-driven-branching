@@ -1,0 +1,16 @@
+# .gitignore
+
+# Ignore system files
+.DS_Store
+
+# Ignore node_modules folder, if you happen to use any Node.js based actions
+node_modules/
+
+# Ignore files related to API keys or credentials
+*.env
+
+# Ignore build/output directories, logs, or local configuration files (adjust these according to your project needs)
+/build/
+/output/
+*.log
+*.config

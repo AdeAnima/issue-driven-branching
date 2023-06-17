@@ -1,0 +1,95 @@
+name: Create Branch for Project Card
+on:
+  project_card:
+    types: [moved] # Trigger this workflow when a project card is moved
+
+env:
+  COLUMN_ID: your-column-id # Define the column ID as an environment variable
+  REPO: your-repo # Define the repository as an environment variable
+
+jobs:
+  check_column:
+    runs-on: ubuntu-latest # Use the latest version of Ubuntu to run this job
+    outputs: # Define the outputs of this job
+      issue_number: ${{ steps.check.outputs.issue_number }} # Output the issue number
+      issue_title: ${{ steps.check.outputs.issue_title }} # Output the issue title
+    steps:
+      - name: Check Column and Get Issue Details
+        id: check # Give this step an ID so its outputs can be referenced
+        uses: actions/github-script@v3 # Use the GitHub Script action
+        with:
+          github-token: ${{ secrets.your-token }} # Use a secret GitHub token for authentication
+          script: |
+            const columnId = process.env.COLUMN_ID;  # Get the column ID from the environment variables
+            const card = context.payload.project_card;  # Get the project card from the context
+            console.log(`Card moved to column ID: ${card.column_id}`);  # Log the column ID
+
+            // If the card was not moved to the specified column, log a message and return
+            if (card.column_id.toString() !== columnId) {
+              console.log('Card moved to a different column. No action taken.');
+              return {};
+            }
+
+            // Extract the issue number and title from the card
+            const issueNumber = card.content_url.split("/").pop();
+            const issueTitle = card.note.replace(/ /g, '-').substring(0, 50);  // Replace spaces with hyphens and limit to 50 characters
+            console.log(`Issue Number: ${issueNumber}, Issue Title: ${issueTitle}`);  # Log the issue details
+
+            // Return the issue details as outputs
+            return { issue_number: issueNumber, issue_title: issueTitle };
+
+  create_branch:
+    needs: check_column # This job depends on the check_column job
+    if: ${{ needs.check_column.outputs.issue_number != '' }} # Only run this job if the issue number is not empty
+    runs-on: ubuntu-latest # Use the latest version of Ubuntu to run this job
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2 # Use the Checkout action to checkout the main branch
+        with:
+          ref: "main" # Specify the main branch
+      - name: Create Branch
+        uses: actions/github-script@v3 # Use the GitHub Script action
+        with:
+          github-token: ${{ secrets.your-token }} # Use a secret GitHub token for authentication
+          script: |
+            const repo = process.env.REPO;  # Get the repository from the environment variables
+            const issueNumber = needs.check_column.outputs.issue_number;  # Get the issue number from the outputs of the check_column job
+            const issueTitle = needs.check_column.outputs.issue_title;  # Get the issue title from the outputs of the check_column job
+            console.log(`Creating branch for Issue Number: ${issueNumber}, Issue Title: ${issueTitle}`);  # Log the details
+
+            // Check if a branch with this name already exists
+            try {
+              await github.repos.getBranch({
+                owner: context.repo.owner,
+                repo,
+                branch: `issue-${issueNumber}-${issueTitle}`
+              });
+
+              // If a branch with this name already exists, log a message and return
+              console.log("A branch with this name already exists, no action taken");
+              return;
+            } catch (error) {
+              // If the error is not a 404 (branch not found), throw the error
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            // If a branch with this name does not exist, create a new branch
+            // First, get the latest commit SHA from the main branch
+            const { data: { object: { sha: latestCommitSha }}} = await github.git.getRef({
+              owner: context.repo.owner,
+              repo,
+              ref: 'heads/main'
+            });
+
+            // Then, create a new branch with this commit SHA
+            await github.git.createRef({
+              owner: context.repo.owner,
+              repo,
+              ref: `refs/heads/issue-${issueNumber}-${issueTitle}`,
+              sha: latestCommitSha
+            });
+
+            // Log the creation of the new branch
+            console.log(`Branch created: issue-${issueNumber}-${issueTitle}`);
